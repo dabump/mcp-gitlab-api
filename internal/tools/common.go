@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -31,6 +32,8 @@ func RegisterAll(s *server.MCPServer, client *gitlabapi.Client) {
 
 func (r Registry) add(s *server.MCPServer, tool mcp.Tool, h handler) {
 	s.AddTool(tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		fmt.Fprintf(os.Stdout, "MCP tool invoked: %s\n", tool.Name)
+
 		result, err := h(ctx, args(req.GetArguments()))
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil

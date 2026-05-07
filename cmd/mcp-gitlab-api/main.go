@@ -4,7 +4,9 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/server"
 
@@ -49,9 +51,28 @@ func main() {
 func serve(mcpServer *server.MCPServer, cfg config.ServerConfig) error {
 	if cfg.Transport == "http" {
 		addr := net.JoinHostPort(cfg.Host, fmt.Sprintf("%d", cfg.Port))
-		httpServer := server.NewStreamableHTTPServer(mcpServer, server.WithEndpointPath(cfg.Endpoint))
-		return httpServer.Start(addr)
+		listener, err := net.Listen("tcp", addr)
+		if err != nil {
+			return err
+		}
+
+		mcpHandler := server.NewStreamableHTTPServer(mcpServer)
+		mux := http.NewServeMux()
+		mux.Handle(normalizeHTTPPath(cfg.Endpoint), mcpHandler)
+
+		_, port, err := net.SplitHostPort(listener.Addr().String())
+		if err != nil {
+			port = fmt.Sprintf("%d", cfg.Port)
+		}
+		fmt.Fprintf(os.Stdout, "MCP server started on port %s\n", port)
+
+		httpServer := &http.Server{Handler: mux}
+		return httpServer.Serve(listener)
 	}
 
 	return server.ServeStdio(mcpServer)
+}
+
+func normalizeHTTPPath(path string) string {
+	return "/" + strings.Trim(path, "/")
 }
