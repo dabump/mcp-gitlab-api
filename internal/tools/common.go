@@ -10,6 +10,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
+	"github.com/dabump/mcp-gitlab-api/internal/auditlog"
 	"github.com/dabump/mcp-gitlab-api/internal/gitlabapi"
 )
 
@@ -33,6 +34,10 @@ func RegisterAll(s *server.MCPServer, client *gitlabapi.Client) {
 func (r Registry) add(s *server.MCPServer, tool mcp.Tool, h handler) {
 	s.AddTool(tool, func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		fmt.Fprintf(os.Stdout, "MCP tool invoked: %s\n", tool.Name)
+		_, _ = auditlog.Write("tool_request", map[string]any{
+			"tool":      tool.Name,
+			"arguments": req.GetArguments(),
+		})
 
 		result, err := h(ctx, args(req.GetArguments()))
 		if err != nil {

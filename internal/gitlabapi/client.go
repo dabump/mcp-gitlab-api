@@ -6,11 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"strings"
 
+	"github.com/hashicorp/go-retryablehttp"
 	gitlab "gitlab.com/gitlab-org/api/client-go"
 
+	"github.com/dabump/mcp-gitlab-api/internal/auditlog"
 	"github.com/dabump/mcp-gitlab-api/internal/config"
 )
 
@@ -45,26 +48,64 @@ func New(cfg config.GitLabConfig) (*Client, error) {
 
 func (c *Client) Do(method, path string, query map[string]any, body any) (Response, error) {
 	endpoint := addQuery(path, query)
-	req, err := c.gitlab.NewRequest(method, endpoint, body, nil)
+	requestPath, requestQuery := splitEndpointQuery(endpoint)
+	req, err := c.gitlab.NewRequest(method, requestPath, body, nil)
 	if err != nil {
 		return Response{}, fmt.Errorf("create GitLab request: %w", err)
+	}
+	if requestQuery != "" {
+		if req.URL.RawQuery == "" {
+			req.URL.RawQuery = requestQuery
+		} else {
+			req.URL.RawQuery = req.URL.RawQuery + "&" + requestQuery
+		}
+	}
+
+	requestLog := map[string]any{
+		"method":   method,
+		"endpoint": endpoint,
+	}
+	if raw := dumpRawRequest(req); raw != "" {
+		requestLog["raw"] = raw
 	}
 
 	var responseBody bytes.Buffer
 	resp, err := c.gitlab.Do(req, &responseBody)
 	if err != nil {
+		_, _ = auditlog.Write("api_response", map[string]any{
+			"request": requestLog,
+			"error":   err.Error(),
+			"response": map[string]any{
+				"raw": dumpRawResponse(resp),
+			},
+		})
 		return Response{}, fmt.Errorf("GitLab request failed: %w", err)
 	}
 	data := responseBody.Bytes()
+	rawResponse := dumpRawResponse(resp)
 
 	result := Response{Status: resp.Status, StatusCode: resp.StatusCode, Headers: resp.Header, Pagination: paginationFromHeaders(resp.Header)}
 	if len(bytes.TrimSpace(data)) == 0 {
+		_, _ = auditlog.Write("api_response", map[string]any{
+			"request": requestLog,
+			"response": result,
+			"raw": map[string]any{
+				"response": rawResponse,
+			},
+		})
 		return result, nil
 	}
 
 	var decoded any
 	if err := json.Unmarshal(data, &decoded); err == nil {
 		result.Body = decoded
+		_, _ = auditlog.Write("api_response", map[string]any{
+			"request": requestLog,
+			"response": result,
+			"raw": map[string]any{
+				"response": rawResponse,
+			},
+		})
 		return result, nil
 	}
 
@@ -72,7 +113,36 @@ func (c *Client) Do(method, path string, query map[string]any, body any) (Respon
 		"encoding": "base64",
 		"data":     base64.StdEncoding.EncodeToString(data),
 	}
+	_, _ = auditlog.Write("api_response", map[string]any{
+		"request": requestLog,
+		"response": result,
+		"raw": map[string]any{
+			"response": rawResponse,
+		},
+	})
 	return result, nil
+}
+
+func dumpRawRequest(req *retryablehttp.Request) string {
+	if req == nil || req.Request == nil {
+		return ""
+	}
+	raw, err := httputil.DumpRequestOut(req.Request, false)
+	if err != nil {
+		return ""
+	}
+	return string(raw)
+}
+
+func dumpRawResponse(resp *gitlab.Response) string {
+	if resp == nil || resp.Response == nil {
+		return ""
+	}
+	raw, err := httputil.DumpResponse(resp.Response, false)
+	if err != nil {
+		return ""
+	}
+	return string(raw)
 }
 
 func ProjectPath(projectID string) string {
@@ -96,6 +166,14 @@ func addQuery(path string, query map[string]any) string {
 		sep = "&"
 	}
 	return path + sep + values.Encode()
+}
+
+func splitEndpointQuery(endpoint string) (string, string) {
+	idx := strings.Index(endpoint, "?")
+	if idx < 0 {
+		return endpoint, ""
+	}
+	return endpoint[:idx], endpoint[idx+1:]
 }
 
 func paginationFromHeaders(headers http.Header) *Pagination {

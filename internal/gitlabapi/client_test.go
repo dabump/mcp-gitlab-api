@@ -44,3 +44,24 @@ func TestPaginationFromHeadersReturnsNilWithoutPaginationHeaders(t *testing.T) {
 		t.Fatalf("pagination = %+v, want nil", pagination)
 	}
 }
+
+func TestSplitEndpointQuery(t *testing.T) {
+	tests := []struct {
+		name     string
+		endpoint string
+		wantPath string
+		wantQuery string
+	}{
+		{name: "without query", endpoint: "projects", wantPath: "projects", wantQuery: ""},
+		{name: "with query", endpoint: "projects?page=1&per_page=100", wantPath: "projects", wantQuery: "page=1&per_page=100"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotPath, gotQuery := splitEndpointQuery(tt.endpoint)
+			if gotPath != tt.wantPath || gotQuery != tt.wantQuery {
+				t.Fatalf("splitEndpointQuery(%q) = (%q, %q), want (%q, %q)", tt.endpoint, gotPath, gotQuery, tt.wantPath, tt.wantQuery)
+			}
+		})
+	}
+}
