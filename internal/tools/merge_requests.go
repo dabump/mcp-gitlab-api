@@ -101,7 +101,7 @@ func (r Registry) registerMergeRequestTools(s *server.MCPServer) {
 		return r.client.Do(http.MethodPut, fmt.Sprintf("projects/%s/merge_requests/%d", project, iid), nil, bodyFromKeys(a, "reviewer_ids"))
 	})
 
-	r.add(s, mcp.NewTool("gitlab_get_merge_request_pipeline", readOnly(mergeOptions(baseProjectOptions("Get CI status/latest pipeline for a merge request"), []mcp.ToolOption{mcp.WithInteger("merge_request_iid", mcp.Required(), mcp.Description("Merge request IID"))})...)...), func(_ context.Context, a args) (any, error) {
+	r.add(s, mcp.NewTool("gitlab_get_merge_request_pipeline", readOnly(mergeOptions(baseProjectOptions("Get CI status/latest pipeline for a merge request"), []mcp.ToolOption{mcp.WithInteger("merge_request_iid", mcp.Required(), mcp.Description("Merge request IID"))}, pageOptions())...)...), func(_ context.Context, a args) (any, error) {
 		return r.mergeRequestGet(a, "/pipelines")
 	})
 

@@ -22,7 +22,17 @@ type Response struct {
 	Status     string      `json:"status"`
 	StatusCode int         `json:"status_code"`
 	Headers    http.Header `json:"headers,omitempty"`
+	Pagination *Pagination `json:"pagination,omitempty"`
 	Body       any         `json:"body,omitempty"`
+}
+
+type Pagination struct {
+	Page       int `json:"page,omitempty"`
+	PerPage    int `json:"per_page,omitempty"`
+	NextPage   int `json:"next_page,omitempty"`
+	PrevPage   int `json:"prev_page,omitempty"`
+	TotalPages int `json:"total_pages,omitempty"`
+	Total      int `json:"total,omitempty"`
 }
 
 func New(cfg config.GitLabConfig) (*Client, error) {
@@ -47,7 +57,7 @@ func (c *Client) Do(method, path string, query map[string]any, body any) (Respon
 	}
 	data := responseBody.Bytes()
 
-	result := Response{Status: resp.Status, StatusCode: resp.StatusCode, Headers: resp.Header}
+	result := Response{Status: resp.Status, StatusCode: resp.StatusCode, Headers: resp.Header, Pagination: paginationFromHeaders(resp.Header)}
 	if len(bytes.TrimSpace(data)) == 0 {
 		return result, nil
 	}
@@ -86,6 +96,33 @@ func addQuery(path string, query map[string]any) string {
 		sep = "&"
 	}
 	return path + sep + values.Encode()
+}
+
+func paginationFromHeaders(headers http.Header) *Pagination {
+	pagination := Pagination{
+		Page:       headerInt(headers, "X-Page"),
+		PerPage:    headerInt(headers, "X-Per-Page"),
+		NextPage:   headerInt(headers, "X-Next-Page"),
+		PrevPage:   headerInt(headers, "X-Prev-Page"),
+		TotalPages: headerInt(headers, "X-Total-Pages"),
+		Total:      headerInt(headers, "X-Total"),
+	}
+	if pagination == (Pagination{}) {
+		return nil
+	}
+	return &pagination
+}
+
+func headerInt(headers http.Header, key string) int {
+	value := strings.TrimSpace(headers.Get(key))
+	if value == "" {
+		return 0
+	}
+	var n int
+	if _, err := fmt.Sscanf(value, "%d", &n); err != nil {
+		return 0
+	}
+	return n
 }
 
 func addValue(values url.Values, key string, value any) {
