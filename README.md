@@ -61,6 +61,20 @@ The MCP endpoint will be `http://127.0.0.1:8080/mcp`.
 }
 ```
 
+## OpenCode Example
+
+```json
+{
+  "mcp": {
+    "gitlab": {
+      "enabled": true,
+      "type": "remote",
+      "url": "http://127.0.0.1:8082/mcp"
+    }
+  }
+}
+```
+
 ## Tools
 
 Repository and code access:
